@@ -2,7 +2,7 @@
 
 # Email Spam Browser Extension
 
-Browser extension of the Email Spam Detector project.
+Browser extension of the [Email Spam Detector](https://github.com/viraj-sh/email-spam-detector) project.
 
 </div>
 

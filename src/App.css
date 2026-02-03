@@ -15,9 +15,10 @@ input {
   padding: 6px 8px;
   margin-bottom: 8px;
   border-radius: 6px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid #2563eb;
   font-size: 12px;
-  background: white;
+  background: #f7f8fa;
+  color: #2563eb;
 }
 
 button {

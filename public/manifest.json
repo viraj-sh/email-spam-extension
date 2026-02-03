@@ -1,18 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Email Spam Detector Extension",
+  "name": "Email Spam Detector BETA",
   "version": "1.0.0",
   "description": "ML based email spam detection for real-world, production use.",
   "action": {
     "default_popup": "index.html"
   },
-  "permissions": ["scripting", "tabs", "storage"],
-  "host_permissions": ["https://mail.google.com/*"],
-  "content_scripts": [
-    {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["emailWatcher.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  "permissions": ["scripting", "tabs", "storage", "activeTab"],
+  "host_permissions": ["https://mail.google.com/*"]
 }

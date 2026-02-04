@@ -1,0 +1,72 @@
+#root {
+  width: 340px;
+  min-height: 420px;
+  padding: 14px;
+}
+
+h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+input {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: 1px solid #2563eb;
+  font-size: 12px;
+  background: #f7f8fa;
+  color: #2563eb;
+}
+
+button {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #2563eb;
+  color: white;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+p {
+  margin: 6px 0;
+  font-size: 12px;
+  text-align: center;
+  color: #374151;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 8px 0;
+}
+
+pre {
+  background: #111827;
+  color: #e5e7eb;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  overflow: auto;
+  max-height: 160px;
+}

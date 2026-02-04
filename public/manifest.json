@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Email Spam Detector BETA",
+  "version": "1.0.0",
+  "description": "ML based email spam detection for real-world, production use.",
+  "icons": {
+    "16": "icons/default/icon-16.png",
+    "32": "icons/default/icon-32.png",
+    "48": "icons/default/icon-48.png",
+    "128": "icons/default/icon-128.png"
+  },
+
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icons/default/icon-16.png",
+      "32": "icons/default/icon-32.png",
+      "48": "icons/default/icon-48.png",
+      "128": "icons/default/icon-128.png"
+    }
+  },
+  "permissions": ["scripting", "tabs", "storage", "activeTab"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

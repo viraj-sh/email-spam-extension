@@ -2,29 +2,27 @@ import { useEffect, useState } from "react";
 import "./App.css";
 
 function App() {
-  const [email, setEmail] = useState(null);
+  const [emails, setEmails] = useState([]);
   const [apiBase, setApiBase] = useState("http://localhost:8000");
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    console.log("Popup mounted — loading stored state");
-
-    chrome.storage.local.get(["email", "apiBase", "prediction"], (result) => {
-      console.log("Restored from storage", result);
-      if (result.email) setEmail(result.email);
+    chrome.storage.local.get(["emails", "apiBase", "prediction"], (result) => {
+      if (result.emails) setEmails(result.emails);
       if (result.apiBase) setApiBase(result.apiBase);
       if (result.prediction) setPrediction(result.prediction);
     });
 
     const listener = (message) => {
-      if (message.type === "EMAIL_EXTRACTED") {
-        console.log("Popup received email", message.payload);
-        setEmail(message.payload);
+      if (message.type === "INBOX_EMAILS_EXTRACTED") {
+        setEmails(message.payload);
         setPrediction(null);
+        setError(null);
 
         chrome.storage.local.set({
-          email: message.payload,
+          emails: message.payload,
           prediction: null,
         });
       }
@@ -34,76 +32,130 @@ function App() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
-  const extractEmail = async () => {
-    console.log("Extract button clicked");
+
+const extractInbox = async () => {
+  setError(null)
+
+  const [tab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  })
+
+  if (!tab?.id) {
+    setError("No active tab found.")
+    return
+  }
+
+  if (!tab.url.includes("mail.google.com")) {
+    setError("Please open Gmail inbox.")
+    return
+  }
+
+  const sendExtractMessage = () =>
+    chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_INBOX" }, (res) => {
+      if (chrome.runtime.lastError) {
+        injectAndRetry()
+      }
+    })
+
+  const injectAndRetry = async () => {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      })
+      chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_INBOX" })
+    } catch {
+      setError("Could not access Gmail page.")
+    }
+  }
+
+  sendExtractMessage()
+}
+
+
+  const predictSpam = async () => {
+    if (!emails.length) return;
+
+    setLoading(true);
+    setPrediction(null);
+    setError(null);
+
+    try {
+      const healthRes = await fetch(`${apiBase}/api/v1/health`);
+      if (!healthRes.ok) throw new Error("Backend server is not responding.");
+
+      const healthData = await healthRes.json();
+      if (!healthData.success || healthData.data?.status !== "OK") {
+        throw new Error("Backend is running but not healthy.");
+      }
+
+      const res = await fetch(`${apiBase}/api/v1/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_texts: emails }),
+      });
+
+      if (!res.ok) throw new Error(`Prediction request failed (${res.status})`);
+
+      const data = await res.json();
+      if (!data.success)
+        throw new Error(data.error || "Prediction failed on server.");
+
+      setPrediction(data);
+      chrome.storage.local.set({ prediction: data });
+
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: "APPLY_PREDICTIONS",
+          payload: data.data.predictions,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Something went wrong while predicting.");
+    }
+
+    setLoading(false);
+  };
+
+  const resetAll = async () => {
+    setEmails([]);
+    setPrediction(null);
+    setError(null);
+
+    chrome.storage.local.set({ emails: [], prediction: null });
 
     const [tab] = await chrome.tabs.query({
       active: true,
       currentWindow: true,
     });
 
-    if (!tab?.id) {
-      console.error("No active tab found");
-      return;
+    if (tab?.id && tab.url.includes("mail.google.com")) {
+      chrome.tabs.sendMessage(tab.id, { type: "CLEAR_PREDICTIONS_UI" });
     }
+  };
 
-    chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_EMAIL" }, (res) => {
-      if (chrome.runtime.lastError) {
-        console.error(
-          "Content script not found:",
-          chrome.runtime.lastError.message,
-        );
-        alert("Open a Gmail email first.");
-        return;
-      }
+  const getStats = () => {
+    if (!prediction?.data?.predictions) return null;
 
-      console.log("Extraction response", res);
+    let spam = 0;
+    let ham = 0;
+
+    prediction.data.predictions.forEach((p) => {
+      if (p.label === "spam") spam++;
+      else ham++;
     });
-  };
 
-  const predictSpam = async () => {
-    if (!email) return;
-
-    console.log("Predict button clicked");
-    setLoading(true);
-    setPrediction(null);
-
-    const combined = `${email.subject}\n${email.body}`;
-
-    try {
-      const res = await fetch(`${apiBase}/api/v1/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email_texts: [combined] }),
-      });
-
-      const data = await res.json();
-      console.log("API response", data);
-
-      const pred = data?.data?.predictions?.[0] || null;
-      setPrediction(pred);
-
-      chrome.storage.local.set({ prediction: pred });
-    } catch (err) {
-      console.error("Prediction error", err);
-    }
-
-    setLoading(false);
-  };
-
-  const handleApiBaseChange = (value) => {
-    setApiBase(value);
-    chrome.storage.local.set({ apiBase: value });
-  };
-
-  const resetAll = () => {
-    setEmail(null);
-    setPrediction(null);
-
-    chrome.storage.local.set({
-      email: null,
-      prediction: null,
-    });
+    return {
+      spam,
+      ham,
+      total: prediction.data.predictions.length,
+    };
   };
 
   return (
@@ -112,68 +164,82 @@ function App() {
 
       <input
         value={apiBase}
-        onChange={(e) => handleApiBaseChange(e.target.value)}
-        placeholder="API Base URL"
+        onChange={(e) => {
+          setApiBase(e.target.value);
+          setError(null);
+          chrome.storage.local.set({ apiBase: e.target.value });
+        }}
         style={{ width: "100%", marginBottom: 8 }}
       />
+      {error && (
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: "6px 8px",
+            borderRadius: 6,
+            fontSize: 12,
+            marginBottom: 8,
+            textAlign: "center",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-      <button onClick={extractEmail} style={{ width: "100%", marginBottom: 6 }}>
-        Extract Email
+      <button onClick={extractInbox} style={{ width: "100%", marginBottom: 6 }}>
+        Extract Inbox Emails
       </button>
 
       <button
         onClick={predictSpam}
-        disabled={!email || loading}
+        disabled={!emails.length || loading}
         style={{ width: "100%", marginBottom: 10 }}
       >
-        {loading ? "Predicting..." : "Predict"}
+        {loading ? "Predicting..." : "Predict Inbox"}
       </button>
 
-      <button
-        onClick={resetAll}
-        style={{ width: "100%", marginBottom: 10 }}
-      >
+      <button onClick={resetAll} style={{ width: "100%", marginBottom: 10 }}>
         Reset
       </button>
 
-      {!email && <p style={{ fontSize: 12 }}>No email extracted</p>}
+      <p style={{ fontSize: 12 }}>
+        Extracted Emails: <strong>{emails.length}</strong>
+      </p>
 
-      {email && (
-        <>
-          <strong>Subject:</strong>
-          <p style={{ fontSize: 12 }}>{email.subject}</p>
+      {prediction &&
+        (() => {
+          const stats = getStats();
+          if (!stats) return null;
 
-          <strong>Body:</strong>
-          <div style={{ maxHeight: 100, overflowY: "auto", fontSize: 12 }}>
-            {email.body}
-          </div>
-        </>
-      )}
+          return (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 10,
+                borderRadius: 8,
+                background: "#f3f4f6",
+                fontSize: 13,
+              }}
+            >
+              <div style={{ fontWeight: "bold", marginBottom: 6 }}>
+                Prediction Summary
+              </div>
 
-      {prediction && (
-        <div style={{ marginTop: 10, fontSize: 12 }}>
-          <hr />
-          <p>
-            <strong>Label:</strong> {prediction.label}
-          </p>
-          <p>
-            <strong>Score:</strong> {prediction.decision_score}
-          </p>
-          <p>
-            <strong>Model:</strong> {prediction.model_version}
-          </p>
-          <p>
-            <strong>Inference ms:</strong> {prediction.model_inference_ms}
-          </p>
-          <p>
-            <strong>Text Length:</strong> {prediction.text_length}
-          </p>
-          <p>
-            <strong>Low Confidence:</strong>{" "}
-            {String(prediction.flag_low_confidence)}
-          </p>
-        </div>
-      )}
+              <div style={{ color: "#dc2626" }}>
+                Spam: <strong>{stats.spam}</strong>
+              </div>
+
+              <div style={{ color: "#16a34a" }}>
+                Ham: <strong>{stats.ham}</strong>
+              </div>
+
+              <div style={{ marginTop: 4, fontSize: 12, color: "#555" }}>
+                Total analyzed: {stats.total}
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
